@@ -8,6 +8,7 @@ package io.debezium.connector.mongodb;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -16,6 +17,10 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import com.mongodb.MongoClientOptions;
+import com.mongodb.ReadPreference;
+import com.mongodb.Tag;
+import com.mongodb.TagSet;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -419,22 +424,39 @@ public class ConnectionContext implements AutoCloseable {
      * @return the client, or {@code null} if no primary could be found for the replica set
      */
     protected MongoClient clientForPrimary(ReplicaSet replicaSet) {
+
         MongoClient replicaSetClient = clientForReplicaSet(replicaSet);
-        ReplicaSetStatus rsStatus = replicaSetClient.getReplicaSetStatus();
-        if (rsStatus == null) {
-            if ( !this.useHostsAsSeeds ) {
-                // No replica set status is available, but it may still be a replica set ...
-                return replicaSetClient;
-            }
-            // This is not a replica set, so there will be no oplog to read ...
-            throw new ConnectException("The MongoDB server(s) at '" + replicaSet +
-                    "' is not a valid replica set and cannot be used");
-        }
-        // It is a replica set ...
-        ServerAddress primaryAddress = rsStatus.getMaster();
-        if (primaryAddress != null) {
-            return pool.clientFor(primaryAddress);
-        }
-        return null;
+
+        Tag tag = new Tag("role", "cdc");
+        List<Tag> tags = new LinkedList<>();
+        tags.add(tag);
+        TagSet ts = new TagSet(tags);
+        ReadPreference rp = ReadPreference.secondary(ts);
+        MongoClientOptions options = MongoClientOptions.builder().readPreference(rp).build();
+
+        replicaSetClient = new MongoClient(
+                replicaSetClient.getAllAddress(),
+                replicaSetClient.getCredentialsList(),
+                options
+        );
+
+        return replicaSetClient;
+
+//        ReplicaSetStatus rsStatus = replicaSetClient.getReplicaSetStatus();
+//        if (rsStatus == null) {
+//            if ( !this.useHostsAsSeeds ) {
+//                // No replica set status is available, but it may still be a replica set ...
+//                return replicaSetClient;
+//            }
+//            // This is not a replica set, so there will be no oplog to read ...
+//            throw new ConnectException("The MongoDB server(s) at '" + replicaSet +
+//                    "' is not a valid replica set and cannot be used");
+//        }
+//        // It is a replica set ...
+//        ServerAddress primaryAddress = rsStatus.getMaster();
+//        if (primaryAddress != null) {
+//            return pool.clientFor(primaryAddress);
+//        }
+//        return null;
     }
 }
