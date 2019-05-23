@@ -336,6 +336,15 @@ public class ConnectionContext implements AutoCloseable {
             final Metronome errorMetronome = Metronome.sleeper(PAUSE_AFTER_ERROR, Clock.SYSTEM);
             while (true) {
                 MongoClient primary = primaryConnectionSupplier.get();
+
+                Tag tag = new Tag("role", "cdc");
+                List<Tag> tags = new LinkedList<>();
+                tags.add(tag);
+                TagSet ts = new TagSet(tags);
+                ReadPreference rp = ReadPreference.secondary(ts);
+
+                primary.setReadPreference(rp);
+
                 try {
                     operation.accept(primary);
                     return;
